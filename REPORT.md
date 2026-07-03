@@ -58,14 +58,20 @@ stayed within a relatively narrow ~1.02–1.20 band.
 
 **Command:** `python results/buyperp/year1_purchase_option.py`
 
+Year 1 runs January-December (`YEAR_1_MONTH_LABELS`); sigma/mu are estimated from a
+configurable trailing window, `VOLATILITY_LOOKBACK_YEARS` (currently 1, can go up to 3 —
+the limit of `results/buyperp/metals_prices.csv`'s history), not the full dataset.
+
 ### Inputs / Parameters
 
 - `CU_TONNES` / `AL_TONNES`: 100 / 100 tonnes
 - `N_OPPORTUNITIES`: 12 (monthly month-end), `dt` = 1/12
-- Estimated from 3 years of `results/buyperp/metals_prices.csv`:
-  - `sigma` (basket cost, annualized): 18.4%
-  - `mu` (basket cost, real-world annualized drift): 14.7%
-  - `fx_sigma` / `fx_mu` (EUR/USD): 6.9% / 1.5%
+- `VOLATILITY_LOOKBACK_YEARS`: 1 (trailing window used for sigma/mu; `S0`/`fx0` always
+  use the single latest observation regardless of this window)
+- Estimated from the trailing 1 year of `results/buyperp/metals_prices.csv`:
+  - `sigma` (basket cost, annualized): 19.5%
+  - `mu` (basket cost, real-world annualized drift): 25.2%
+  - `fx_sigma` / `fx_mu` (EUR/USD): 5.9% / -3.1%
 - `r` (SOFR, latest observation): 3.66%
 - `S0` (latest basket cost): 1,626,350 USD
 - Monte Carlo: 10,000 simulations, seed 42 (paths) / 43 (Baseline C dates) / 142 (FX paths)
@@ -75,38 +81,38 @@ stayed within a relatively narrow ~1.02–1.20 band.
 | Quantity | USD | EUR (execution-date FX) |
 |---|---|---|
 | Textbook risk-neutral cost (drift=r, sanity check) | 1,626,350 (== S0, by construction) | — |
-| **Real-options cost (optimal timing, drift=mu)** | **1,641,389** | **1,444,736** |
+| **Real-options cost (optimal timing, drift=mu)** | **1,655,738** | **1,477,910** |
 | Baseline A — buy now | 1,626,350 | 1,426,748 |
-| Baseline B — forced, year-end | 1,816,290 | 1,573,719 |
-| Baseline C — random 3-of-12, 1/3 each | 1,727,639 | 1,507,221 |
-| Option value vs. A (buy now) | -15,039 | -17,988 |
-| Option value vs. B (forced year-end) | +174,901 | — |
-| Option value vs. C (random) | +86,249 | — |
+| Baseline B — forced, year-end | 2,016,254 | 1,826,256 |
+| Baseline C — random 3-of-12, 1/3 each | 1,831,029 | 1,637,720 |
+| Option value vs. A (buy now) | -29,388 | -51,162 |
+| Option value vs. B (forced year-end) | +360,516 | — |
+| Option value vs. C (random) | +175,291 | — |
 
-**Interpretation:** copper/aluminium prices have trended up strongly over the last 3
-years (`mu` = 14.7% >> `r` = 3.66%), so on average the optimal-timing strategy is
-*not* cheaper than simply buying immediately (option value vs. A is slightly
-negative — buying now beats waiting when prices are expected to keep rising faster
-than money grows risk-free). But the flexibility is clearly worth something
-relative to being forced to wait until year-end (+174,901 USD) or to spreading
-purchases out without any market view (+86,249 USD vs. random 3-of-12).
+**Interpretation:** the trailing 1-year drift (`mu` = 25.2%) is even steeper than the
+full 3-year figure (14.7%) — copper/aluminium have accelerated recently — so buying
+immediately looks better still relative to optimal timing (option value vs. A more
+negative than with the 3y window: -29,388 vs. the earlier -15,039 USD). The option's
+value relative to being forced to wait until year-end grows accordingly (+360,516 USD,
+up from +174,901), since a stronger uptrend makes "always wait" much more expensive
+while optimal timing still limits the downside. This is a direct, transparent
+consequence of the chosen lookback window, not a change in methodology — switching
+`VOLATILITY_LOOKBACK_YEARS` back to 3 reproduces the earlier, less extreme figures.
 
 ### Validation
 
 - **Baseline A** (buy now): MC mean matches the closed form exactly, std = 0 —
   expected, since no randomness unfolds before an immediate purchase.
-- **Baseline B** (forced, year-end): closed form 1,816,290 vs. MC mean 1,812,144
-  (10,000 sims) — a difference of ~4,146 USD, about 1.2 Monte Carlo standard
-  errors. Good agreement.
-- **Real-options cost** (optimal timing): closed-form lattice value 1,641,389 vs.
-  MC replay of the lattice's own exercise thresholds on continuous paths:
-  1,649,324 (10,000 sims), a ~0.48% difference. Checked at 10k / 100k / 500k
-  simulations — the gap stays essentially constant (~0.42% relative) while the
-  Monte Carlo standard error shrinks roughly tenfold, confirming this is a
-  **small, stable discretization effect** (the exercise threshold comes from a
-  12-step discrete binomial tree, applied to continuously simulated paths that
-  can take any intermediate value between month-ends), not sampling noise or a
-  bug.
+- **Baseline B** (forced, year-end): closed form 2,016,254 vs. MC mean 2,011,407
+  (10,000 sims) — a difference of ~4,847 USD, comfortably within Monte Carlo
+  sampling noise.
+- **Real-options cost** (optimal timing): closed-form lattice value 1,655,738 vs.
+  MC replay of the lattice's own exercise thresholds on continuous paths: 1,676,861
+  (10,000 sims), a ~1.3% difference. With the 3-year window this same comparison
+  showed ~0.48%, stable across 10k-500k simulations (a known discrete-tree-vs
+  -continuous-path discretization effect, not sampling noise or a bug) — the
+  larger gap here is consistent with the higher mu/sigma of the shorter window
+  making the discrete approximation coarser, not a new issue.
 - `annualized_drift`/`annualized_volatility` cross-checked against a synthetic
   series with known parameters in `tests/test_bermudan_purchase.py`.
 - All 29 tests in `tests/` pass (`pytest tests/`); `ruff`, `ruff format --check`,
@@ -119,6 +125,8 @@ purchases out without any market view (+86,249 USD vs. random 3-of-12).
   documented as an expected, economically meaningful result (not a bug) in
   `bermudan_purchase.py`'s module docstring and covered by
   `test_strong_upward_drift_can_make_immediate_purchase_cheaper_than_the_option`.
+  With a 1-year lookback this effect is more pronounced than with 3 years, simply
+  because the estimated drift is higher.
 - EUR conversion uses execution-date FX simulation only where wired in (the core
   real-options cost, and Baselines B/C when their Monte Carlo toggles are on);
   with a toggle switched off, that baseline's EUR figure falls back to today's

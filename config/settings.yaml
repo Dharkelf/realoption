@@ -44,14 +44,8 @@ output:
   sofr_use_case: buyperp
   sofr_csv_filename: sofr_rate.csv
 
-buyperp:
-  # Year-1 Bermudan purchase-timing option: the company must buy its full
-  # annual cable-input requirement exactly once, at whichever of n candidate
-  # dates minimizes cost, and is forced to buy at the last one if it never
-  # exercises earlier.
-  cu_tonnes: 100
-  al_tonnes: 100
-  n_opportunities: 12
-  monte_carlo:
-    n_simulations: 10000
-    seed: 42
+# Note: buyperp's own business quantities (cu/al tonnes, n_opportunities,
+# volatility lookback window, Monte Carlo sample size/seed) are NOT listed
+# here — per AGENTS.md's "Result Format" rules, a standalone results/*.py
+# script keeps its own quantities and toggles at the top of the file, so
+# results/buyperp/year1_purchase_option.py is the source of truth for those.
