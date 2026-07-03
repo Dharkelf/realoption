@@ -320,12 +320,27 @@ n_never_sell = len(threshold_by_month) - len(finite_thresholds)
 fig, ax = plt.subplots(figsize=(9, 5))
 if finite_thresholds:
     ax.plot(finite_months, finite_thresholds, marker="o", label="Sell-now threshold")
-ax.axhline(v0_usd, color="grey", linestyle="--", label="v0 (today's batch value)")
+ax.axhline(v0_usd, color="grey", linestyle="--", label="v0 (today's batch value, NOT a threshold)")
 ax.set_ylabel("Batch value (USD)")
 ax.set_title("Year 1: price level that triggers a voluntary sale, by month")
 ax.legend()
 
 if n_never_sell:
+    # Put this ON the chart too, not just printed below it — otherwise the
+    # flat grey v0 reference line is the only thing visible, and it's easy
+    # to mistake that constant reference for a (non-existent) threshold line.
+    ax.text(
+        0.5,
+        0.5,
+        f"No voluntary-sale threshold in {n_never_sell}/{len(threshold_by_month)} months\n"
+        "(mu >> r: never worth selling early — only the forced excess\n"
+        "sale and the year-end mark-to-market ever trigger)",
+        transform=ax.transAxes,
+        ha="center",
+        va="center",
+        color="firebrick",
+        fontsize=10,
+    )
     print(
         f"{n_never_sell} of {len(threshold_by_month)} months have an infinite threshold "
         "(never worth selling early at any price this year, given mu >> r) — "
