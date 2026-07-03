@@ -1,2 +1,32 @@
 # Single source of truth for all tunable parameters.
-# Populated as each mini-project is scoped.
+
+metals:
+  lookback_years: 3
+  series:
+    copper:
+      label: "LME Copper Cash-Settlement"
+      westmetall_field: LME_Cu_cash
+      column_prefix: cu
+    aluminium:
+      label: "LME Aluminium Cash-Settlement"
+      westmetall_field: LME_Al_cash
+      column_prefix: al
+  source:
+    base_url: "https://www.westmetall.com/en/markdaten.php"
+    user_agent: "Mozilla/5.0 (compatible; realoption-data-collector/1.0)"
+
+fx:
+  flow_ref: "EXR"
+  series_key: "D.USD.EUR.SP00.A"
+  source:
+    base_url: "https://data-api.ecb.europa.eu/service/data"
+
+paths:
+  raw_dir: data/raw
+  processed_dir: data/processed
+  results_dir: results
+
+output:
+  use_case: business
+  processed_filename: metals_prices.parquet
+  csv_filename: metals_prices.csv

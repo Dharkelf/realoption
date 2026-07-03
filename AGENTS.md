@@ -16,6 +16,29 @@ model is active for this project.
 
 ---
 
+## Learning-Oriented Commenting (overrides the global "why, not what" default)
+
+The user wants to *learn* from this codebase, so code across this repository is commented
+generously — this project intentionally overrides the terse global default in
+`~/.claude/CLAUDE.md` ("no comments explaining what the code does — only why"). Match the
+teaching style of the blueprint notebooks in `local/`: narrative explanation alongside the
+mechanics, not just the non-obvious rationale.
+
+Applies to every file created in this repo — `src/`, `results/`, `tests/`, `main.py`:
+
+- Every public function/class gets a docstring explaining *what it does, in plain language*
+  and *why it's built this way*, not just its signature.
+- Non-trivial code blocks get a short comment explaining the step, as if walking a learner
+  through it — e.g. `# repeated header rows appear once per month block; drop them`.
+- `results/*.py` (jupytext percent format) should read like the `local/` notebooks: markdown
+  cells (`# %% [markdown]`) narrate the concept and the math/finance intuition before the
+  code cell that implements it, not just a title.
+- This does not license bloated or redundant comments — each comment should still teach
+  something a reader couldn't get from the code alone in five seconds; avoid restating
+  obvious one-liners (`i += 1  # increment i`).
+
+---
+
 ## Project Purpose
 
 Collection of independent real-options / derivative-pricing mini-projects. Each project
@@ -117,7 +140,8 @@ Do NOT deviate from it without explicit user instruction.
 
 | Module | Path | Responsibility |
 |---|---|---|
-| _(to be filled in as mini-projects are scoped)_ | | |
+| data_collection | `src/data_collection/` | Fetch daily LME copper/aluminium cash prices (westmetall.com) and EUR/USD rate (ECB), merge, convert, persist as Parquet + CSV for the `business` use case |
+| utils | `src/utils/` | Path helpers derived from `config/settings.yaml` |
 
 ---
 
@@ -197,7 +221,8 @@ Rules:
 
 - **Python 3.11+**
 - Type hints on all public functions and class methods.
-- No comments explaining *what* the code does — only *why* when non-obvious.
+- Comment generously in a teaching style — see "Learning-Oriented Commenting" above
+  (this project overrides the usual "why, not what" default).
 - No `print()` in library code under `src/` — use the stdlib `logging` module; configure
   level in `settings.yaml`. Standalone `results/*.py` files (jupytext percent format) MAY
   print/display output, since they are meant to be read top-to-bottom like a notebook.
