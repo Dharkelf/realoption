@@ -205,3 +205,11 @@ pile to market at year-end.
   in Python (no vectorization across months, since each month's decision depends on the
   running inventory state) — fine at 10,000-500,000 simulations here, but would need
   vectorizing further if `n_simulations` grew by another order of magnitude or more.
+- **Fixed 2026-07-03:** with the fitted parameters (`mu`=25.2% >> `r`), all 11 monthly
+  exercise thresholds come out as `math.inf` (never worth selling early at any price
+  this year — only the forced excess sale and the year-end mark-to-market ever trigger).
+  The "sell threshold over the year" chart originally plotted these `inf` values
+  directly, which silently collapsed the y-axis to a meaningless near-zero range and
+  showed no line at all — easy to misread as "the threshold is constant". The chart now
+  detects non-finite thresholds, plots only the finite ones (if any), and prints an
+  explicit count of "months with no finite threshold" instead of failing silently.

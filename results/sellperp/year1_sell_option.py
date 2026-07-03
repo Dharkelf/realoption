@@ -27,6 +27,8 @@
 # duplicating them.
 
 # %%
+import math
+
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -298,14 +300,35 @@ summary.round(0)
 # (see the module docstring), there is a single "sell if the batch value
 # reaches at least this much" line per month — plotting it against `v0`
 # shows how much of a price rally it takes to trigger an early sale.
+#
+# With a strong enough upward drift (as in our current fit), it's never
+# worth selling early at ANY month — every month's threshold is `math.inf`
+# (matching Baseline B's dominance being small and the policy's ~1 sale/year
+# average). `inf` can't be plotted as a finite line — plotting it naively
+# would silently collapse the y-axis to a meaningless range around zero, not
+# show a flat/constant threshold — so those months are plotted as gaps and
+# called out explicitly instead of leaving a misleadingly empty chart.
 
 # %%
 threshold_by_month = [exercise_thresholds[(t, 1)] for t in range(1, N_MONTHS)]
+finite_months = [
+    m for m, t in zip(YEAR_1_MONTH_LABELS[:-1], threshold_by_month, strict=True) if math.isfinite(t)
+]
+finite_thresholds = [t for t in threshold_by_month if math.isfinite(t)]
+n_never_sell = len(threshold_by_month) - len(finite_thresholds)
 
 fig, ax = plt.subplots(figsize=(9, 5))
-ax.plot(YEAR_1_MONTH_LABELS[:-1], threshold_by_month, marker="o", label="Sell-now threshold")
+if finite_thresholds:
+    ax.plot(finite_months, finite_thresholds, marker="o", label="Sell-now threshold")
 ax.axhline(v0_usd, color="grey", linestyle="--", label="v0 (today's batch value)")
 ax.set_ylabel("Batch value (USD)")
 ax.set_title("Year 1: price level that triggers a voluntary sale, by month")
 ax.legend()
+
+if n_never_sell:
+    print(
+        f"{n_never_sell} of {len(threshold_by_month)} months have an infinite threshold "
+        "(never worth selling early at any price this year, given mu >> r) — "
+        "not plottable as a finite line, so they're simply absent from the chart above."
+    )
 fig.tight_layout()
