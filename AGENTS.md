@@ -63,22 +63,38 @@ and do not copy its content verbatim into synced files.
 
 Every mini-project result is delivered as a single, standalone `.py` file that:
 
-- Runs on its own with `python results/<name>.py` — no hidden dependency on notebook state.
+- Runs on its own with `python results/<use_case>/<name>.py` — no hidden dependency on
+  notebook state, and no dependency on the current working directory (see "Own Virtual
+  Environment" / editable install below for how imports from `src/` stay resolvable
+  regardless of where the script is run from).
 - Is written in **Jupytext "percent" format**: `# %%` marks a code cell, `# %% [markdown]`
   marks a markdown cell (content as a comment block below it). This mirrors the
   structure (markdown narrative interleaved with code) of the notebooks in `local/`.
-- Converts losslessly to a real notebook on demand:
+- Keeps the file itself short and narrative: business quantities and toggle switches at
+  the top, then a readable step-by-step walkthrough. Core valuation/pricing logic that
+  needs to be reused across multiple results (e.g. the same option-pricing function
+  called again for Year 2, Year 3, ...) belongs in a tested module under
+  `src/real_options/` (or a similarly named package), imported at the top of the results
+  file — this is the one deliberate exception to "no separate package import" below.
+- Ship **both** the `.py` and its converted `.ipynb` side by side in the same
+  `results/<use_case>/` folder — regenerate the notebook whenever the `.py` changes:
   ```bash
-  jupytext --to notebook results/<name>.py
+  jupytext --to notebook results/<use_case>/<name>.py
   ```
-  and back again:
+  and convert changes made in the notebook back the other way with:
   ```bash
-  jupytext --to py:percent <name>.ipynb
+  jupytext --to py:percent results/<use_case>/<name>.ipynb
   ```
-- Contains no business logic requiring a separate package import beyond what's declared
-  at the top of the file — these are one-shot, readable results, not library code.
+- Beyond an imported `src/` pricing module (see above), contains no business logic
+  requiring a separate package import — these are one-shot, readable results, not
+  library code in themselves.
 
-`jupytext` is a pinned dependency in `requirements.txt`.
+`jupytext` is a pinned dependency in `requirements.txt`. Because results scripts import
+from `src/`, and must work regardless of the current working directory or whether they're
+running as a `.py` script or a converted `.ipynb`, `src` is installed as an **editable
+package** (`pip install -e .`, see pyproject.toml's `[build-system]`/`[project]` tables)
+rather than relying on `sys.path` tricks — this is a one-time step per `.venv`, listed in
+the README's Setup section.
 
 ---
 
@@ -140,7 +156,8 @@ Do NOT deviate from it without explicit user instruction.
 
 | Module | Path | Responsibility |
 |---|---|---|
-| data_collection | `src/data_collection/` | Fetch daily LME copper/aluminium cash prices (westmetall.com) and EUR/USD rate (ECB), merge, convert, persist as Parquet + CSV for the `business` use case |
+| data_collection | `src/data_collection/` | Fetch daily LME copper/aluminium cash prices (westmetall.com), EUR/USD rate (ECB), and USD SOFR rate (FRED); merge, convert, persist as Parquet + CSV for the `business` and `buyperp` use cases |
+| real_options | `src/real_options/` | Reusable option-pricing logic (currently: `bermudan_purchase` — Bermudan purchase-timing lattice, exercise-boundary extraction, and Monte Carlo verification/baselines) shared across mini-projects and future years of the same use case |
 | utils | `src/utils/` | Path helpers derived from `config/settings.yaml` |
 
 ---

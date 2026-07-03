@@ -18,7 +18,7 @@ import logging
 
 import pandas as pd
 
-from src.data_collection import ecb_fx, westmetall
+from src.data_collection import ecb_fx, fred_rates, westmetall
 from src.utils.paths import load_settings, processed_dir, raw_dir, results_dir
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -40,6 +40,7 @@ def run() -> pd.DataFrame:
     settings = load_settings()
     metals_cfg = settings["metals"]
     fx_cfg = settings["fx"]
+    fred_cfg = settings["fred"]
     output_cfg = settings["output"]
 
     start_date, end_date = _date_window(metals_cfg["lookback_years"])
@@ -75,6 +76,20 @@ def run() -> pd.DataFrame:
     )
     fx_frame.to_parquet(raw_dir() / "ecb_eurusd.parquet", index=False)
 
+    # SOFR feeds the buyperp real-options discount rate `r`, not the merged
+    # metals table — kept as its own small CSV rather than joined in, since
+    # only that one use case needs it.
+    sofr_frame = fred_rates.fetch_fred_series(
+        series_id=fred_cfg["series_id"],
+        start_date=start_date,
+        end_date=end_date,
+        base_url=fred_cfg["source"]["base_url"],
+    ).rename(columns={"value": "sofr_rate_pct"})
+    sofr_frame.to_parquet(raw_dir() / "fred_sofr.parquet", index=False)
+    sofr_csv_path = results_dir(output_cfg["sofr_use_case"]) / output_cfg["sofr_csv_filename"]
+    sofr_frame.to_csv(sofr_csv_path, index=False)
+    logger.info("wrote %d rows to %s", len(sofr_frame), sofr_csv_path)
+
     # --- 2. Merge on date ---------------------------------------------------------
     # An inner join keeps only the dates where *all three* series have a value.
     # LME and ECB are both closed on different sets of public holidays, so a
@@ -96,9 +111,10 @@ def run() -> pd.DataFrame:
     # --- 4. Persist: Parquet for downstream analysis, CSV for the simple scripts --
     merged.to_parquet(processed_dir() / output_cfg["processed_filename"], index=False)
 
-    csv_path = results_dir(output_cfg["use_case"]) / output_cfg["csv_filename"]
-    merged.to_csv(csv_path, index=False)
-    logger.info("wrote %d rows to %s", len(merged), csv_path)
+    for use_case in output_cfg["use_cases"]:
+        csv_path = results_dir(use_case) / output_cfg["csv_filename"]
+        merged.to_csv(csv_path, index=False)
+        logger.info("wrote %d rows to %s", len(merged), csv_path)
 
     return merged
 

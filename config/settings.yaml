@@ -21,12 +21,37 @@ fx:
   source:
     base_url: "https://data-api.ecb.europa.eu/service/data"
 
+fred:
+  # SOFR = Secured Overnight Financing Rate, the standard USD risk-free proxy
+  # since LIBOR's retirement. Used as the discount rate `r` for the buyperp
+  # real-options lattice.
+  series_id: SOFR
+  source:
+    base_url: "https://fred.stlouisfed.org/graph"
+
 paths:
   raw_dir: data/raw
   processed_dir: data/processed
   results_dir: results
 
 output:
-  use_case: business
+  # metals_prices.csv is copied into every use case listed here, so each
+  # standalone results/<use_case>/*.py script can load it with no path at all.
+  use_cases: [business, buyperp]
   processed_filename: metals_prices.parquet
   csv_filename: metals_prices.csv
+  # SOFR is only needed by the buyperp valuation, so it's written just there.
+  sofr_use_case: buyperp
+  sofr_csv_filename: sofr_rate.csv
+
+buyperp:
+  # Year-1 Bermudan purchase-timing option: the company must buy its full
+  # annual cable-input requirement exactly once, at whichever of n candidate
+  # dates minimizes cost, and is forced to buy at the last one if it never
+  # exercises earlier.
+  cu_tonnes: 100
+  al_tonnes: 100
+  n_opportunities: 12
+  monte_carlo:
+    n_simulations: 10000
+    seed: 42

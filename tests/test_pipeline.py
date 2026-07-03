@@ -20,7 +20,7 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from src.data_collection import ecb_fx, pipeline, westmetall
+from src.data_collection import ecb_fx, fred_rates, pipeline, westmetall
 
 
 def _fake_lme_history(field: str, column_prefix: str, **_kwargs: Any) -> pd.DataFrame:
@@ -41,6 +41,14 @@ def _fake_eurusd_history(**_kwargs: Any) -> pd.DataFrame:
     return pd.DataFrame({"date": pd.to_datetime(dates), "eur_usd_rate": rates})
 
 
+def _fake_sofr_history(**_kwargs: Any) -> pd.DataFrame:
+    # Column name "value" matches the real fred_rates.fetch_fred_series output;
+    # pipeline.run() renames it to "sofr_rate_pct" itself.
+    dates = ["2024-01-01", "2024-01-02"]
+    rates = [5.30, 5.31]
+    return pd.DataFrame({"date": pd.to_datetime(dates), "value": rates})
+
+
 @pytest.fixture
 def isolated_output_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
     """Redirect the pipeline's raw/processed/results output into tmp_path.
@@ -51,15 +59,24 @@ def isolated_output_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dic
     """
     raw = tmp_path / "raw"
     processed = tmp_path / "processed"
-    results = tmp_path / "results" / "business"
+    results_root = tmp_path / "results"
     raw.mkdir()
     processed.mkdir()
-    results.mkdir(parents=True)
+
+    def fake_results_dir(use_case: str) -> Path:
+        use_case_dir = results_root / use_case
+        use_case_dir.mkdir(parents=True, exist_ok=True)
+        return use_case_dir
 
     monkeypatch.setattr(pipeline, "raw_dir", lambda: raw)
     monkeypatch.setattr(pipeline, "processed_dir", lambda: processed)
-    monkeypatch.setattr(pipeline, "results_dir", lambda _use_case: results)
-    return {"raw": raw, "processed": processed, "results": results}
+    monkeypatch.setattr(pipeline, "results_dir", fake_results_dir)
+    return {
+        "raw": raw,
+        "processed": processed,
+        "results_business": results_root / "business",
+        "results_buyperp": results_root / "buyperp",
+    }
 
 
 def test_run_merges_on_date_and_converts_to_eur(
@@ -67,6 +84,7 @@ def test_run_merges_on_date_and_converts_to_eur(
 ) -> None:
     monkeypatch.setattr(westmetall, "fetch_lme_cash_history", _fake_lme_history)
     monkeypatch.setattr(ecb_fx, "fetch_eurusd_history", _fake_eurusd_history)
+    monkeypatch.setattr(fred_rates, "fetch_fred_series", _fake_sofr_history)
 
     result = pipeline.run()
 
@@ -87,26 +105,33 @@ def test_run_writes_raw_parquet_processed_parquet_and_csv(
 ) -> None:
     monkeypatch.setattr(westmetall, "fetch_lme_cash_history", _fake_lme_history)
     monkeypatch.setattr(ecb_fx, "fetch_eurusd_history", _fake_eurusd_history)
+    monkeypatch.setattr(fred_rates, "fetch_fred_series", _fake_sofr_history)
 
     pipeline.run()
 
-    raw, processed, results = (
-        isolated_output_dirs["raw"],
-        isolated_output_dirs["processed"],
-        isolated_output_dirs["results"],
-    )
+    raw, processed = isolated_output_dirs["raw"], isolated_output_dirs["processed"]
     assert (raw / "lme_copper_cash.parquet").exists()
     assert (raw / "lme_aluminium_cash.parquet").exists()
     assert (raw / "ecb_eurusd.parquet").exists()
+    assert (raw / "fred_sofr.parquet").exists()
     assert (processed / "metals_prices.parquet").exists()
 
-    # This is the file the standalone results/business/*.py scripts read
-    # directly with pd.read_csv("metals_prices.csv") — no path plumbing.
-    csv_path = results / "metals_prices.csv"
-    assert csv_path.exists()
-    csv_df = pd.read_csv(csv_path, parse_dates=["date"])
-    assert len(csv_df) == 2
-    assert "cu_eur_per_tonne" in csv_df.columns
+    # metals_prices.csv is copied into every use case (business AND buyperp),
+    # so each standalone results/<use_case>/*.py script can read it with no
+    # path plumbing at all.
+    for results_dir in (isolated_output_dirs["results_business"], isolated_output_dirs["results_buyperp"]):
+        csv_path = results_dir / "metals_prices.csv"
+        assert csv_path.exists()
+        csv_df = pd.read_csv(csv_path, parse_dates=["date"])
+        assert len(csv_df) == 2
+        assert "cu_eur_per_tonne" in csv_df.columns
+
+    # SOFR (the buyperp discount rate) is only needed by that one use case.
+    sofr_path = isolated_output_dirs["results_buyperp"] / "sofr_rate.csv"
+    assert sofr_path.exists()
+    sofr_df = pd.read_csv(sofr_path)
+    assert list(sofr_df.columns) == ["date", "sofr_rate_pct"]
+    assert not (isolated_output_dirs["results_business"] / "sofr_rate.csv").exists()
 
 
 def test_date_window_is_lookback_years_ending_today() -> None:
