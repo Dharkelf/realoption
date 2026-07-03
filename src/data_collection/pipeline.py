@@ -86,9 +86,10 @@ def run() -> pd.DataFrame:
         base_url=fred_cfg["source"]["base_url"],
     ).rename(columns={"value": "sofr_rate_pct"})
     sofr_frame.to_parquet(raw_dir() / "fred_sofr.parquet", index=False)
-    sofr_csv_path = results_dir(output_cfg["sofr_use_case"]) / output_cfg["sofr_csv_filename"]
-    sofr_frame.to_csv(sofr_csv_path, index=False)
-    logger.info("wrote %d rows to %s", len(sofr_frame), sofr_csv_path)
+    for sofr_use_case in output_cfg["sofr_use_cases"]:
+        sofr_csv_path = results_dir(sofr_use_case) / output_cfg["sofr_csv_filename"]
+        sofr_frame.to_csv(sofr_csv_path, index=False)
+        logger.info("wrote %d rows to %s", len(sofr_frame), sofr_csv_path)
 
     # --- 2. Merge on date ---------------------------------------------------------
     # An inner join keeps only the dates where *all three* series have a value.

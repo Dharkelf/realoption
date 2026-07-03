@@ -37,15 +37,16 @@ paths:
 output:
   # metals_prices.csv is copied into every use case listed here, so each
   # standalone results/<use_case>/*.py script can load it with no path at all.
-  use_cases: [business, buyperp]
+  use_cases: [business, buyperp, sellperp]
   processed_filename: metals_prices.parquet
   csv_filename: metals_prices.csv
-  # SOFR is only needed by the buyperp valuation, so it's written just there.
-  sofr_use_case: buyperp
+  # SOFR (the discount rate r) is only needed by the real-options valuations,
+  # not the plain business data export.
+  sofr_use_cases: [buyperp, sellperp]
   sofr_csv_filename: sofr_rate.csv
 
-# Note: buyperp's own business quantities (cu/al tonnes, n_opportunities,
-# volatility lookback window, Monte Carlo sample size/seed) are NOT listed
-# here — per AGENTS.md's "Result Format" rules, a standalone results/*.py
-# script keeps its own quantities and toggles at the top of the file, so
-# results/buyperp/year1_purchase_option.py is the source of truth for those.
+# Note: buyperp's/sellperp's own business quantities (cu/al tonnes, storage
+# caps, lookback window, Monte Carlo sample size/seed) are NOT listed here —
+# per AGENTS.md's "Result Format" rules, a standalone results/*.py script
+# keeps its own quantities and toggles at the top of the file, so each
+# results/<use_case>/*.py is the source of truth for those.

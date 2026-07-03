@@ -131,3 +131,77 @@ consequence of the chosen lookback window, not a change in methodology — switc
   real-options cost, and Baselines B/C when their Monte Carlo toggles are on);
   with a toggle switched off, that baseline's EUR figure falls back to today's
   flat rate, clearly labeled as an approximation in the script's output.
+
+---
+
+## `sellperp` Year 1 sell-timing option — last run 2026-07-03
+
+**Command:** `python results/sellperp/year1_sell_option.py`
+
+Year 1 runs January-December, mirroring `buyperp`. Storage capacity translates to
+`max_cycle` = 10 months of accumulation (`LAGER_CU=100t / CU_QTY_MONTHLY=10t`, same for
+aluminium). sigma/mu use the same `VOLATILITY_LOOKBACK_YEARS=1` default as `buyperp`.
+
+### Inputs / Parameters
+
+- `CU_QTY_MONTHLY` / `AL_QTY_MONTHLY`: 10 / 10 tonnes; `LAGER_CU` / `LAGER_AL`: 100 / 100 tonnes
+- `max_cycle` (storage capacity in months): 10; `N_MONTHS`: 12, `dt` = 1/12
+- Estimated from the trailing 1 year of `results/sellperp/metals_prices.csv`:
+  - `sigma` (one-month batch value, annualized): 19.5%
+  - `mu` (one-month batch value, real-world annualized drift): 25.2%
+- `r` (SOFR, latest observation): 3.66%
+- `v0` (today's one-month batch value): 162,635 USD
+- Monte Carlo: 10,000 simulations, seed 42 (paths) / 43 (Baseline C) / 142 (FX paths)
+
+### Model Results
+
+| Quantity | USD | EUR (execution-date FX) |
+|---|---|---|
+| Textbook risk-neutral value (drift=r, sanity check) | 1,951,620 (== Baseline A, by construction) | — |
+| **Real-options revenue (optimal timing, drift=mu)** | **2,408,833** | **2,188,017** |
+| Baseline A — sell immediately every month | 2,196,743 | — |
+| Baseline B — wait for storage to fill, then sell all | 2,348,567 | — |
+| Baseline C — random holding periods | 2,295,372 | 2,067,300 |
+| Option value vs. A (sell immediately) | +212,089 | — |
+| Option value vs. B (wait for capacity) | +60,266 | — |
+| Option value vs. C (random) | +113,461 | — |
+
+**Interpretation:** unlike `buyperp`, where a strong uptrend made *buying* immediately
+attractive, here a strong uptrend (`mu`=25.2%) makes the optimal *selling* strategy
+clearly better than every fixed comparison policy — waiting for a higher price pays off
+on average when accumulating is cheap (only a capacity constraint, no cost of carry
+modeled) and prices trend up. The optimal policy sells about once per year on average
+(`mean_num_sales` ≈ 1.0): typically waiting through the full 10-month accumulation
+window, taking the small forced partial sale at month 11, and marking the remaining
+pile to market at year-end.
+
+### Validation
+
+- **Risk-neutral case** (drift=r): lattice value exactly equals Baseline A and Baseline
+  B (`1,951,620` all three) — the same "linear payoff ⇒ zero timing value" identity as
+  `bermudan_purchase.py`, now confirmed for a repeated/reset decision structure too.
+- **Baseline A/B Monte Carlo**: closed form 2,196,743 (A) / 2,348,567 (B) vs. MC means
+  2,196,808 / 2,346,059 (10,000 sims) — both comfortably within a couple of Monte Carlo
+  standard errors.
+- **Real-options revenue**: closed-form lattice 2,408,833 vs. MC replay of the lattice's
+  own exercise thresholds on continuous paths: 2,410,376 (10,000 sims, 0.06%). Checked at
+  10k/100k/500k simulations: the gap stabilizes around ~0.34%, the same
+  discrete-tree-vs-continuous-path discretization effect documented for `buyperp`, not a
+  bug — here it's smaller because the optimal policy sells only ~once per year, giving
+  fewer discrete decision points for the approximation to compound over.
+- **Threshold `n`-independence**: proved analytically in `swing_sell.py`'s docstring
+  (selling always resets to the same state, making the value function affine in `n`)
+  and checked in `tests/test_swing_sell.py`.
+- All 39 tests in `tests/` pass (`pytest tests/`); `ruff`, `ruff format --check`, and
+  `mypy` all pass via `pre-commit run --all-files`.
+
+### Known Issues
+
+- Baseline B's "sell everything once storage is full" rule is intentionally simpler
+  than the real business rule used by the optimal policy (force-sell only the excess) —
+  see `swing_sell.py`'s module docstring. They answer different questions and are not
+  meant to coincide.
+- `simulate_swing_sell_adaptive_baseline`'s per-path loop is O(n_simulations × n_months)
+  in Python (no vectorization across months, since each month's decision depends on the
+  running inventory state) — fine at 10,000-500,000 simulations here, but would need
+  vectorizing further if `n_simulations` grew by another order of magnitude or more.

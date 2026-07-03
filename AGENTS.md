@@ -156,8 +156,8 @@ Do NOT deviate from it without explicit user instruction.
 
 | Module | Path | Responsibility |
 |---|---|---|
-| data_collection | `src/data_collection/` | Fetch daily LME copper/aluminium cash prices (westmetall.com), EUR/USD rate (ECB), and USD SOFR rate (FRED); merge, convert, persist as Parquet + CSV for the `business` and `buyperp` use cases |
-| real_options | `src/real_options/` | Reusable option-pricing logic (currently: `bermudan_purchase` — Bermudan purchase-timing lattice, exercise-boundary extraction, and Monte Carlo verification/baselines) shared across mini-projects and future years of the same use case |
+| data_collection | `src/data_collection/` | Fetch daily LME copper/aluminium cash prices (westmetall.com), EUR/USD rate (ECB), and USD SOFR rate (FRED); merge, convert, persist as Parquet + CSV for the `business`, `buyperp`, and `sellperp` use cases |
+| real_options | `src/real_options/` | Reusable option-pricing logic: `bermudan_purchase` (single-exercise Bermudan purchase-timing lattice) and `swing_sell` (repeated, capacity-constrained sell-timing lattice, reusing `bermudan_purchase`'s tree/GBM building blocks) — shared across mini-projects and future years of the same use case |
 | utils | `src/utils/` | Path helpers derived from `config/settings.yaml` |
 
 ---

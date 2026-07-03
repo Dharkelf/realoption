@@ -14,6 +14,9 @@ Mini-projects are added incrementally; this README is updated in the same commit
   with actual market data instead of made-up numbers.
 - **`buyperp`**: values the flexibility to choose *when* within a year to buy an annual
   copper/aluminium requirement, against three alternative baselines.
+- **`sellperp`**: values the flexibility to choose *when* to sell accumulated recycled
+  copper/aluminium output under a storage-capacity constraint — a repeated, resetting
+  cousin of `buyperp`'s single-decision problem.
 
 ## Architecture
 
@@ -38,12 +41,12 @@ westmetall.com (free, daily)     ECB Data Portal (free, daily)     FRED (free, d
                           ▼                                            │
            src/data_collection/pipeline.py::run()  ◄────────────────────┘
                           │
-        ┌─────────────────┼──────────────────────┬─────────────────────┐
-        ▼                 ▼                      ▼                     ▼
- data/raw/*.parquet  data/processed/     results/business/     results/buyperp/
- (one file per         metals_prices.    metals_prices.csv     metals_prices.csv
-  source, as scraped)  parquet           (no path needed)      + sofr_rate.csv
-                        (merged + EUR)                         (no path needed)
+        ┌─────────────────┼───────────┬──────────────────────┬─────────┐
+        ▼                 ▼           ▼                      ▼         ▼
+ data/raw/*.parquet  data/processed/  results/business/  results/buyperp/  results/sellperp/
+ (one file per         metals_prices. metals_prices.csv  metals_prices.csv metals_prices.csv
+  source, as scraped)  parquet        (no path needed)   + sofr_rate.csv   + sofr_rate.csv
+                        (merged + EUR)                    (no path needed) (no path needed)
 ```
 
 Why both Parquet and CSV: Parquet under `data/` is the analysis-ready, typed
@@ -80,6 +83,38 @@ results/buyperp/year1_purchase_option.py
    each in USD and execution-date-converted EUR
 ```
 
+### `sellperp` use case — Year 1 sell-timing option under a storage cap
+
+Every month, recycling produces a fixed quantity of copper+aluminium. Each month-end the
+holder decides whether to sell EVERYTHING accumulated so far, or keep holding it — but
+storage has a cap, and holding through another month's production once the cap is (near)
+reached forces that month's *excess* to be sold regardless of price. Unlike `buyperp`
+(exactly one purchase per year), a sale here can happen **several times** within the
+year, resetting accumulation each time — so `src/real_options/swing_sell.py` adds an
+extra state dimension (months of unsold accumulation) on top of `bermudan_purchase.py`'s
+binomial tree, reusing that module's tree/GBM building blocks rather than duplicating them.
+
+```
+results/sellperp/metals_prices.csv, sofr_rate.csv
+                 │
+                 ▼
+results/sellperp/year1_sell_option.py
+                 │  (imports the reusable pricer)
+                 ▼
+       src/real_options/swing_sell.py ──uses──► src/real_options/bermudan_purchase.py
+        │                    │                   (binomial_parameters, GBM paths,
+        ▼                    ▼                    volatility/drift estimation)
+ lattice (closed form,   Monte Carlo (paths +
+ month × storage-cycle   thresholds; multiple
+ × price node)           sales per path possible)
+        │                    │
+        └─────────┬──────────┘
+                   ▼
+ real-options revenue vs. 3 baselines (sell immediately / wait for storage to fill /
+ random holding periods), each in USD and execution-date-converted EUR (summed across
+ however many sales a given scenario produces in a year)
+```
+
 ## Setup
 
 ```bash
@@ -106,11 +141,13 @@ All tunable parameters live in `config/settings.yaml`:
 | `fred.source.base_url` | FRED `fredgraph.csv` endpoint |
 | `paths.raw_dir` / `processed_dir` / `results_dir` | Where Parquet/CSV output is written |
 | `output.use_cases` | Use-case folders under `results/` that get a `metals_prices.csv` copy |
-| `output.sofr_use_case` / `sofr_csv_filename` | Where the SOFR CSV is copied (only `buyperp` needs it) |
+| `output.sofr_use_cases` / `sofr_csv_filename` | Use-case folders that get the SOFR CSV copy |
 | `output.processed_filename` / `csv_filename` | Output file names |
-| `buyperp.cu_tonnes` / `al_tonnes` | Annual quantities (tonnes) — also set at the top of `year1_purchase_option.py` |
-| `buyperp.n_opportunities` | Scheduled purchase dates per year (12 = monthly) |
-| `buyperp.monte_carlo.n_simulations` / `seed` | Monte Carlo sample size and reproducibility seed |
+
+`buyperp`'s and `sellperp`'s own business quantities (tonnes, storage caps, lookback
+window, Monte Carlo sample size/seed) are NOT in `settings.yaml` — each
+`results/<use_case>/*.py` script keeps its own at the top of the file, per AGENTS.md's
+Result Format rules.
 
 ## Usage
 
@@ -123,28 +160,30 @@ python main.py
 This (re)creates:
 - `data/raw/lme_copper_cash.parquet`, `lme_aluminium_cash.parquet`, `ecb_eurusd.parquet`, `fred_sofr.parquet`
 - `data/processed/metals_prices.parquet`
-- `results/business/metals_prices.csv` and `results/buyperp/metals_prices.csv` — columns:
-  `date`, `cu_usd_per_tonne`, `al_usd_per_tonne`, `eur_usd_rate`, `cu_eur_per_tonne`, `al_eur_per_tonne`
-- `results/buyperp/sofr_rate.csv` — columns: `date`, `sofr_rate_pct`
+- `results/business/metals_prices.csv`, `results/buyperp/metals_prices.csv`, `results/sellperp/metals_prices.csv`
+  — columns: `date`, `cu_usd_per_tonne`, `al_usd_per_tonne`, `eur_usd_rate`, `cu_eur_per_tonne`, `al_eur_per_tonne`
+- `results/buyperp/sofr_rate.csv`, `results/sellperp/sofr_rate.csv` — columns: `date`, `sofr_rate_pct`
 
 Run a mini-project result standalone (from anywhere, thanks to the editable install):
 
 ```bash
 python results/buyperp/year1_purchase_option.py
+python results/sellperp/year1_sell_option.py
 ```
 
 Both the `.py` and its already-converted `.ipynb` are committed side by side in each
 `results/<use_case>/` folder. Regenerate the notebook after editing the `.py`:
 
 ```bash
-jupytext --to notebook results/buyperp/year1_purchase_option.py
-jupyter execute --inplace results/buyperp/year1_purchase_option.ipynb
+jupytext --to notebook results/sellperp/year1_sell_option.py
+jupyter execute --inplace results/sellperp/year1_sell_option.ipynb
 ```
 
 ## Data
 
-`results/business/metals_prices.csv` / `results/buyperp/metals_prices.csv` (and the
-matching `data/processed/metals_prices.parquet`):
+`results/business/metals_prices.csv` / `results/buyperp/metals_prices.csv` /
+`results/sellperp/metals_prices.csv` (and the matching
+`data/processed/metals_prices.parquet`):
 
 | Column | Type | Meaning |
 |---|---|---|
@@ -159,7 +198,7 @@ Rows are an **inner join** on `date` across all sources — a date only appears 
 source published a value that day. See `REPORT.md` for the actual row count and date
 range last observed.
 
-`results/buyperp/sofr_rate.csv`:
+`results/buyperp/sofr_rate.csv` / `results/sellperp/sofr_rate.csv`:
 
 | Column | Type | Meaning |
 |---|---|---|
@@ -184,19 +223,22 @@ Project" table in the same commit.
   sources (no SLA); if any changes its HTML/API shape, the scraper/parser will need
   updating.
 - Only cash-settlement (spot) prices are collected, not the LME 3-month forward.
-- `buyperp`'s Monte Carlo replay of the lattice's exercise policy shows a small
-  (~0.4-0.5%), *stable* gap versus the closed-form lattice value — a known
+- Both `buyperp`'s and `sellperp`'s Monte Carlo replay of the lattice's exercise policy
+  shows a small, *stable* gap versus the closed-form lattice value — a known
   discrete-tree-vs-continuous-path discretization effect, not a bug (see `REPORT.md`).
-- `buyperp`'s FX simulation is independent of the metal cost simulation (no modeled
-  correlation between EUR/USD and copper/aluminium prices).
-- `buyperp` currently only covers Year 1; the pricing function is written to be
-  reusable for Year 2, Year 3, ... (new `S0`/`sigma`/`mu` each year from fresh data),
-  but no multi-year chaining exists yet.
+- FX simulation is independent of the metal cost/batch-value simulation in both use
+  cases (no modeled correlation between EUR/USD and copper/aluminium prices).
+- Both `buyperp` and `sellperp` currently only cover Year 1; their pricing functions are
+  written to be reusable for Year 2, Year 3, ... (new price/volatility/drift inputs each
+  year from fresh data), but no multi-year chaining exists yet.
+- `sellperp`'s actual storage rule (force-sell only the excess above capacity) differs
+  deliberately from Baseline B's simplified rule (sell everything once storage would be
+  full) — see `swing_sell.py`'s module docstring for why these are two different things.
 
 ## Future Improvements
 
-- Extend `buyperp` to Year 2+ once next year's market data exists.
-- Model correlation between the EUR/USD path and the metal cost path in `buyperp`.
+- Extend `buyperp` and `sellperp` to Year 2+ once next year's market data exists.
+- Model correlation between the EUR/USD path and the metal cost path in both use cases.
 
 ## References
 
