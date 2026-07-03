@@ -1,0 +1,23 @@
+# local blueprints — never synced to GitHub
+local/
+
+# environment
+.venv/
+.env
+
+# data
+data/
+
+# python
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# jupyter
+.ipynb_checkpoints/
+
+# os
+.DS_Store
